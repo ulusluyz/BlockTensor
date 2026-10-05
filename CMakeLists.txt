@@ -5,6 +5,9 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Enable testing BEFORE subdirectories
+enable_testing()
+
 # Find Vulkan
 find_package(Vulkan REQUIRED)
 
@@ -48,9 +51,6 @@ file(GLOB GLSL_SHADER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/kernels/glsl/*.comp")
 if(GLSL_SHADER_SOURCES)
     target_compile_shaders(compile_shaders "${GLSL_SHADER_SOURCES}")
 endif()
-
-# Enable testing
-enable_testing()
 
 # Include subdirectories
 add_subdirectory(runtime)
