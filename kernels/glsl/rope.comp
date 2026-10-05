@@ -1,0 +1,47 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(std430, binding = 1) writeonly buffer OutputBuffer {
+    float output_data[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint seq_len;
+    uint num_heads;
+    uint head_dim;
+    uint pos_offset;
+} params;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    uint total_elements = params.seq_len * params.num_heads * params.head_dim;
+
+    if (idx >= total_elements / 2) return;
+
+    uint head_dim = params.head_dim;
+    uint half_dim = head_dim / 2;
+
+    uint pair_idx = idx;
+    uint elem_in_head = (pair_idx * 2) % head_dim;
+    uint pos = (pair_idx * 2) / (params.num_heads * head_dim) + params.pos_offset;
+    uint base_idx = (pair_idx * 2 / head_dim) * head_dim + (elem_in_head / 2);
+
+    float freq = 1.0 / pow(10000.0, float(elem_in_head / 2 * 2) / float(head_dim));
+    float val = float(pos) * freq;
+    float cos_val = cos(val);
+    float sin_val = sin(val);
+
+    uint i1 = base_idx;
+    uint i2 = base_idx + half_dim;
+
+    float x1 = input_data[i1];
+    float x2 = input_data[i2];
+
+    output_data[i1] = x1 * cos_val - x2 * sin_val;
+    output_data[i2] = x1 * sin_val + x2 * cos_val;
+}

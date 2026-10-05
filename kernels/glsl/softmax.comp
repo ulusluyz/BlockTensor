@@ -1,0 +1,65 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(std430, binding = 1) writeonly buffer OutputBuffer {
+    float output_data[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint num_rows;
+    uint dim;
+} params;
+
+shared float shared_max[256];
+shared float shared_sum[256];
+
+void main() {
+    uint tid = gl_LocalInvocationID.x;
+    uint row = gl_WorkGroupID.x;
+    uint dim = params.dim;
+    uint base_idx = row * dim;
+
+    float local_max = -1e30;
+    for (uint i = tid; i < dim; i += gl_WorkGroupSize.x) {
+        float val = input_data[base_idx + i];
+        if (val > local_max) local_max = val;
+    }
+    shared_max[tid] = local_max;
+    barrier();
+
+    for (uint s = gl_WorkGroupSize.x / 2; s > 0; s >>= 1) {
+        if (tid < s) {
+            if (shared_max[tid + s] > shared_max[tid]) {
+                shared_max[tid] = shared_max[tid + s];
+            }
+        }
+        barrier();
+    }
+    float max_val = shared_max[0];
+
+    float local_sum = 0.0;
+    for (uint i = tid; i < dim; i += gl_WorkGroupSize.x) {
+        float val = exp(input_data[base_idx + i] - max_val);
+        output_data[base_idx + i] = val;
+        local_sum += val;
+    }
+    shared_sum[tid] = local_sum;
+    barrier();
+
+    for (uint s = gl_WorkGroupSize.x / 2; s > 0; s >>= 1) {
+        if (tid < s) {
+            shared_sum[tid] += shared_sum[tid + s];
+        }
+        barrier();
+    }
+    float sum_val = shared_sum[0];
+
+    for (uint i = tid; i < dim; i += gl_WorkGroupSize.x) {
+        output_data[base_idx + i] /= sum_val;
+    }
+}

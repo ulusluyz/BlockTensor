@@ -1,0 +1,85 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct BlockQ4_0 {
+    float scale;
+    uint qs[4];
+};
+
+layout(std430, binding = 0) readonly buffer WeightBuffer {
+    BlockQ4_0 weight_blocks[];
+};
+
+layout(std430, binding = 1) readonly buffer InputVector {
+    float x_data[];
+};
+
+layout(std430, binding = 2) writeonly buffer OutputVector {
+    float y_data[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint M;
+    uint N;
+} params;
+
+shared float shared_sum[256];
+
+void main() {
+    uint tid = gl_LocalInvocationID.x;
+    uint row = gl_WorkGroupID.x;
+
+    if (row >= params.M) return;
+
+    uint blocks_per_row = params.N / 32;
+    uint row_block_start = row * blocks_per_row;
+
+    float local_sum = 0.0;
+
+    for (uint b = tid; b < blocks_per_row; b += gl_WorkGroupSize.x) {
+        BlockQ4_0 block = weight_blocks[row_block_start + b];
+        float scale = block.scale;
+        uint x_offset = b * 32;
+
+        float block_dot = 0.0;
+        for (uint i = 0; i < 4; ++i) {
+            uint packed = block.qs[i];
+
+            uint b0 = packed & 0xFFu;
+            uint b1 = (packed >> 8u) & 0xFFu;
+            uint b2 = (packed >> 16u) & 0xFFu;
+            uint b3 = (packed >> 24u) & 0xFFu;
+
+            int q0 = int(b0 & 0x0Fu) - 8;
+            int q1 = int((b0 >> 4u) & 0x0Fu) - 8;
+            int q2 = int(b1 & 0x0Fu) - 8;
+            int q3 = int((b1 >> 4u) & 0x0Fu) - 8;
+            int q4 = int(b2 & 0x0Fu) - 8;
+            int q5 = int((b2 >> 4u) & 0x0Fu) - 8;
+            int q6 = int(b3 & 0x0Fu) - 8;
+            int q7 = int((b3 >> 4u) & 0x0Fu) - 8;
+
+            uint base_x = x_offset + i * 8;
+            block_dot += float(q0) * x_data[base_x + 0] + float(q1) * x_data[base_x + 1];
+            block_dot += float(q2) * x_data[base_x + 2] + float(q3) * x_data[base_x + 3];
+            block_dot += float(q4) * x_data[base_x + 4] + float(q5) * x_data[base_x + 5];
+            block_dot += float(q6) * x_data[base_x + 6] + float(q7) * x_data[base_x + 7];
+        }
+        local_sum += block_dot * scale;
+    }
+
+    shared_sum[tid] = local_sum;
+    barrier();
+
+    for (uint s = gl_WorkGroupSize.x / 2; s > 0; s >>= 1) {
+        if (tid < s) {
+            shared_sum[tid] += shared_sum[tid + s];
+        }
+        barrier();
+    }
+
+    if (tid == 0) {
+        y_data[row] = shared_sum[0];
+    }
+}

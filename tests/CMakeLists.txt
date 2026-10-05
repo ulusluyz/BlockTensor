@@ -1,0 +1,33 @@
+add_executable(test_stage1_backend test_stage1_backend.cpp)
+target_link_libraries(test_stage1_backend PRIVATE blocktensor_backends blocktensor_quant)
+add_test(NAME test_stage1_backend COMMAND test_stage1_backend)
+
+add_executable(test_stage2_memory test_stage2_memory.cpp)
+target_link_libraries(test_stage2_memory PRIVATE blocktensor_backends blocktensor_quant)
+add_test(NAME test_stage2_memory COMMAND test_stage2_memory)
+
+add_executable(test_stage3_kernels test_stage3_kernels.cpp)
+target_link_libraries(test_stage3_kernels PRIVATE blocktensor_backends blocktensor_quant)
+if(TARGET compile_shaders)
+    add_dependencies(test_stage3_kernels compile_shaders)
+endif()
+add_test(NAME test_stage3_kernels COMMAND test_stage3_kernels)
+
+add_executable(test_stage4_quant test_stage4_quant.cpp)
+target_link_libraries(test_stage4_quant PRIVATE blocktensor_backends blocktensor_quant)
+if(TARGET compile_shaders)
+    add_dependencies(test_stage4_quant compile_shaders)
+endif()
+add_test(NAME test_stage4_quant COMMAND test_stage4_quant)
+
+add_executable(test_stage5_primitives test_stage5_primitives.cpp)
+target_link_libraries(test_stage5_primitives PRIVATE blocktensor_backends blocktensor_runtime blocktensor_quant)
+add_test(NAME test_stage5_primitives COMMAND test_stage5_primitives)
+
+add_executable(test_stage6_7_transformer test_stage6_7_transformer.cpp)
+target_link_libraries(test_stage6_7_transformer PRIVATE blocktensor_backends blocktensor_runtime blocktensor_quant)
+add_test(NAME test_stage6_7_transformer COMMAND test_stage6_7_transformer)
+
+add_executable(test_stage8_9_integration test_stage8_9_integration.cpp)
+target_link_libraries(test_stage8_9_integration PRIVATE blocktensor_backends blocktensor_runtime blocktensor_models blocktensor_quant)
+add_test(NAME test_stage8_9_integration COMMAND test_stage8_9_integration)

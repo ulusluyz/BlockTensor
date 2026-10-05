@@ -1,0 +1,55 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer InputBuffer {
+    float input_data[];
+};
+
+layout(std430, binding = 1) readonly buffer WeightBuffer {
+    float weight_data[];
+};
+
+layout(std430, binding = 2) writeonly buffer OutputBuffer {
+    float output_data[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint dim;
+    float eps;
+} params;
+
+shared float shared_sum[256];
+
+void main() {
+    uint tid = gl_LocalInvocationID.x;
+    uint row = gl_WorkGroupID.x;
+    uint dim = params.dim;
+    float eps = params.eps;
+
+    uint base_idx = row * dim;
+
+    float local_sq_sum = 0.0;
+    for (uint i = tid; i < dim; i += gl_WorkGroupSize.x) {
+        float val = input_data[base_idx + i];
+        local_sq_sum += val * val;
+    }
+    shared_sum[tid] = local_sq_sum;
+    barrier();
+
+    for (uint s = gl_WorkGroupSize.x / 2; s > 0; s >>= 1) {
+        if (tid < s) {
+            shared_sum[tid] += shared_sum[tid + s];
+        }
+        barrier();
+    }
+
+    float mean_sq = shared_sum[0] / float(dim);
+    float inv_rms = 1.0 / sqrt(mean_sq + eps);
+
+    for (uint i = tid; i < dim; i += gl_WorkGroupSize.x) {
+        float val = input_data[base_idx + i];
+        float w = weight_data[i];
+        output_data[base_idx + i] = val * inv_rms * w;
+    }
+}

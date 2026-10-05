@@ -1,0 +1,75 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct BlockQ8_0 {
+    float scale;
+    int qs[8];
+};
+
+layout(std430, binding = 0) readonly buffer WeightBuffer {
+    BlockQ8_0 weight_blocks[];
+};
+
+layout(std430, binding = 1) readonly buffer InputVector {
+    float x_data[];
+};
+
+layout(std430, binding = 2) writeonly buffer OutputVector {
+    float y_data[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint M;
+    uint N;
+} params;
+
+shared float shared_sum[256];
+
+void main() {
+    uint tid = gl_LocalInvocationID.x;
+    uint row = gl_WorkGroupID.x;
+
+    if (row >= params.M) return;
+
+    uint blocks_per_row = params.N / 32;
+    uint row_block_start = row * blocks_per_row;
+
+    float local_sum = 0.0;
+
+    for (uint b = tid; b < blocks_per_row; b += gl_WorkGroupSize.x) {
+        BlockQ8_0 block = weight_blocks[row_block_start + b];
+        float scale = block.scale;
+        uint x_offset = b * 32;
+
+        float block_dot = 0.0;
+        for (uint i = 0; i < 8; ++i) {
+            int packed = block.qs[i];
+
+            int q0 = (packed << 24) >> 24;
+            int q1 = (packed << 16) >> 24;
+            int q2 = (packed << 8) >> 24;
+            int q3 = packed >> 24;
+
+            block_dot += float(q0) * x_data[x_offset + i * 4 + 0];
+            block_dot += float(q1) * x_data[x_offset + i * 4 + 1];
+            block_dot += float(q2) * x_data[x_offset + i * 4 + 2];
+            block_dot += float(q3) * x_data[x_offset + i * 4 + 3];
+        }
+        local_sum += block_dot * scale;
+    }
+
+    shared_sum[tid] = local_sum;
+    barrier();
+
+    for (uint s = gl_WorkGroupSize.x / 2; s > 0; s >>= 1) {
+        if (tid < s) {
+            shared_sum[tid] += shared_sum[tid + s];
+        }
+        barrier();
+    }
+
+    if (tid == 0) {
+        y_data[row] = shared_sum[0];
+    }
+}

@@ -1,0 +1,3 @@
+add_executable(bt_dummy_tool main.cpp)
+add_executable(bt_infer bt_infer.cpp)
+target_link_libraries(bt_infer PRIVATE blocktensor_backends blocktensor_runtime blocktensor_models blocktensor_quant)

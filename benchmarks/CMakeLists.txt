@@ -1,0 +1,2 @@
+add_executable(bench_runner bench_runner.cpp)
+target_link_libraries(bench_runner PRIVATE blocktensor_backends blocktensor_runtime blocktensor_models blocktensor_quant)
